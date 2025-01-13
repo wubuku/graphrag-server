@@ -56,3 +56,7 @@ docsite/
 
 # Jupyter notebook
 .ipynb_checkpoints/
+logs
+input
+output
+cache
