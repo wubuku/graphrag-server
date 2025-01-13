@@ -31,19 +31,17 @@ conda activate graphrag
 pip install -r requirements.txt
 ```
 
-- 初始化GraphRAG Initialize GraphRAG
-```
-graphrag init --root .
-```
 - 创建input文件夹 Create Input Foler
 
 ```
 mkdir input
 ```
+然后将你的文件放入。
 
 - 配置settings.yaml Config settings.yaml
 
 按照GraphRAG官方配置文档配置 [GraphRAG Configuration](https://microsoft.github.io/graphrag/posts/config/json_yaml/)
+当前项目中，默认配置为智普免费的glm-4-flash，你只需要创建.env文件并配置你的key即可。
 
 - 索引
 
@@ -63,9 +61,12 @@ graphrag index --root .
     response_type: str = "Multiple Paragraphs"
 ```
 - 启动web server
+
+
 ```bash
 python -m webserver.main
 ```
+
 更多的参考配置，可以访问[公众号文章](https://mp.weixin.qq.com/mp/appmsgalbum?__biz=MzI0OTAzNTEwMw==&action=getalbum&album_id=3429606151455670272&uin=&key=&devicetype=iMac+MacBookPro17%2C1+OSX+OSX+14.4+build(23E214)&version=13080710&lang=zh_CN&nettype=WIFI&ascene=0&fontScale=100)和[B站视频](https://www.bilibili.com/video/BV113v8e6EZn)
 
 ## 使用Docker安装 Install by docker
@@ -81,7 +82,7 @@ docker run -v ./output:/app/output \
            -v ./input:/app/input \
            -v ./prompts:/app/prompts \
            -v ./settings.yaml:/app/settings.yaml \
-           -v ./lancedb:/app/lancedb -p 20213:20213 kylinmountain/graphrag-server:0.3.1
+           -p 20213:20213 kylinmountain/graphrag-server:0.3.1
 
 ```
 - 索引 Index
