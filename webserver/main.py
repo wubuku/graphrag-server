@@ -4,7 +4,7 @@ import time
 import uuid
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse, StreamingResponse
@@ -26,7 +26,14 @@ from webserver import utils
 from webserver.configs import settings
 from webserver.utils import consts
 
-app = FastAPI()
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+app = FastAPI(
+    title="GraphRAG Server",
+    description="A server for GraphRAG search engines with OpenAI API compatibility"
+)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_allowed_origins,
@@ -36,32 +43,74 @@ app.add_middleware(
 )
 app.mount("/static", StaticFiles(directory="webserver/static"), name="static")
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+basic_search = None
+local_search = None
+global_search = None
+drift_search = None
+question_gen = None
 
 
-basic_search: BasicSearch
-local_search: LocalSearch
-global_search: GlobalSearch
-drift_search: DRIFTSearch
-question_gen: LocalQuestionGen
+async def startup():
+    """Initialization function when the application starts"""
+    global local_search, global_search, question_gen, drift_search, basic_search
+    
+    try:
+        root = Path(settings.root).resolve()
+        data_dir = Path(settings.data).resolve()
+        
+        # Check if paths exist
+        if not root.exists():
+            logger.error(f"Root directory does not exist: {root}")
+            return
+            
+        if not data_dir.exists():
+            logger.error(f"Data directory does not exist: {data_dir}")
+            return
+        
+        # Ensure settings.yaml file exists in the external directory
+        config_path = root / "settings.yaml"
+        if not config_path.exists():
+            logger.error(f"settings.yaml file not found in root directory: {config_path}")
+            logger.error(f"Please ensure there is a valid settings.yaml file in {root}")
+            return
+        
+        try:
+            config, data = await search.load_context(root, data_dir)
+        except FileNotFoundError as e:
+            logger.error(f"Failed to load settings: {str(e)}")
+            return
+        except Exception as e:
+            logger.error(f"Error loading context: {str(e)}", exc_info=True)
+            return
+        
+        # Check if necessary data files exist and have data
+        required_data = ["entities", "text_units", "community_reports"]
+        missing_files = []
+        
+        for file_name in required_data:
+            if file_name not in data or data[file_name].empty:
+                missing_files.append(file_name)
+        
+        if missing_files:
+            logger.error(f"Missing required data files: {', '.join(missing_files)}. Check your data directory: {data_dir}")
+            return
+        
+        # Initialize search engines
+        local_search = await search.load_local_search_engine(config, data)
+        global_search = await search.load_global_search_engine(config, data)
+        drift_search = await search.load_drift_search_engine(config, data)
+        basic_search = await search.load_basic_search_engine(config, data)
+        
+        logger.info("All search engines initialized successfully")
+        
+    except Exception as e:
+        logger.error(f"Error during startup: {e}", exc_info=True)
 
 
+# Using the old on_event instead of lifespan
 @app.on_event("startup")
 async def startup_event():
-    global local_search
-    global global_search
-    global question_gen
-    global drift_search
-    global basic_search
-    root = Path(settings.root).resolve()
-    data_dir = Path(settings.data).resolve()
-    config, data = await search.load_context(root, data_dir)
-    local_search = await search.load_local_search_engine(config, data)
-    global_search = await search.load_global_search_engine(config, data)
-    drift_search = await search.load_drift_search_engine(config, data)
-    basic_search = await search.load_basic_search_engine(config, data)
-    # question_gen = await search.build_local_question_gen(llm, token_encoder=token_encoder)
+    await startup()
 
 
 @app.get("/")
@@ -70,6 +119,21 @@ async def index():
     with open(html_file_path, "r", encoding="utf-8") as file:
         html_content = file.read()
     return HTMLResponse(content=html_content)
+
+
+@app.middleware("http")
+async def check_search_engines(request: Request, call_next):
+    """Check if search engines are initialized, if not, try to initialize them again"""
+    if request.url.path.startswith("/v1/chat/completions") and not all([local_search, global_search, drift_search, basic_search]):
+        await startup()
+        if not all([local_search, global_search, drift_search, basic_search]):
+            return JSONResponse(
+                status_code=503,
+                content={"error": "Search engines are not initialized. Check server logs for details."}
+            )
+    
+    response = await call_next(request)
+    return response
 
 
 async def handle_sync_response(request, search, conversation_history):
@@ -113,7 +177,7 @@ async def handle_stream_response(request, search, conversation_history):
         token_index = 0
         chat_id = f"chatcmpl-{uuid.uuid4().hex}"
         full_response = ""
-        async for token in search.astream_search(request.messages[-1].content, conversation_history):  # 调用原始的生成器
+        async for token in search.astream_search(request.messages[-1].content, conversation_history):  # Call the original generator
             if token_index == 0:
                 token_index += 1
                 continue
@@ -168,9 +232,9 @@ async def handle_stream_response(request, search, conversation_history):
 
 @app.post("/v1/chat/completions")
 async def chat_completions(request: gtypes.ChatCompletionRequest):
-    if not local_search or not global_search or not drift_search or not basic_search:
-        logger.error("search engines is not initialized")
-        raise HTTPException(status_code=500, detail="search engines is not initialized")
+    if not all([local_search, global_search, drift_search, basic_search]):
+        logger.error("Search engines are not initialized. Check server logs for details.")
+        raise HTTPException(status_code=503, detail="Search engines are not initialized. Check server logs for details.")
 
     try:
         history = request.messages[:-1]
@@ -229,17 +293,22 @@ async def list_models():
 @app.get("/v1/references/{index_id}/{datatype}/{id}", response_class=HTMLResponse)
 async def get_reference(index_id: str, datatype: str, id: int):
     if not os.path.exists(settings.data):
-        raise HTTPException(status_code=404, detail=f"{index_id} not found")
-    if datatype not in ["entities", "claims", "sources", "reports", "relationships"]:
-        raise HTTPException(status_code=404, detail=f"{datatype} not found")
+        raise HTTPException(status_code=404, detail=f"Data directory {settings.data} not found")
+        
+    if datatype not in ["entities", "sources", "reports", "relationships"]:
+        raise HTTPException(status_code=404, detail=f"Datatype {datatype} not supported")
 
-    data = await search.get_index_data(settings.data, datatype, id)
-    html_file_path = os.path.join("webserver", "templates", f"{datatype}_template.html")
-    with open(html_file_path, 'r') as file:
-        html_content = file.read()
-    template = Template(html_content)
-    html_content = template.render(data=data)
-    return HTMLResponse(content=html_content)
+    try:
+        data = await search.get_index_data(settings.data, datatype, id)
+        html_file_path = os.path.join("webserver", "templates", f"{datatype}_template.html")
+        with open(html_file_path, 'r') as file:
+            html_content = file.read()
+        template = Template(html_content)
+        html_content = template.render(data=data)
+        return HTMLResponse(content=html_content)
+    except Exception as e:
+        logger.error(f"Error getting reference data: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error getting reference data: {str(e)}")
 
 
 if __name__ == "__main__":

@@ -1,18 +1,48 @@
+import os
+from pathlib import Path
 from pydantic_settings import BaseSettings
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 class Settings(BaseSettings):
     server_port: int = 20213
     cors_allowed_origins: list = ["*"]  # Edit the list to restrict access.
-    root: str = "."
-    data: str = "./output"
+    
+    # Configuration overridden by environment variables, ensure paths are absolute
+    root: str = os.environ.get("GRAPHRAG_ROOT_DIR", ".")
+    data: str = os.environ.get("GRAPHRAG_DATA_DIR", "")
+    
     community_level: int = 2
     dynamic_community_selection: bool = False
     response_type: str = "Multiple Paragraphs"
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # Ensure paths are absolute
+        self.root = os.path.abspath(os.path.expanduser(self.root))
+        
+        # If data is not set, use root/output as default
+        if not self.data:
+            self.data = os.path.join(self.root, "output")
+        else:
+            self.data = os.path.abspath(os.path.expanduser(self.data))
+        
+        # Print current path configuration for debugging
+        print(f"GraphRAG Root Dir: {self.root}")
+        print(f"GraphRAG Data Dir: {self.data}")
+
     @property
     def website_address(self) -> str:
         return f"http://127.0.0.1:{self.server_port}"
+
+    class Config:
+        env_prefix = "GRAPHRAG_"
+        env_file = ".env"
+        env_file_encoding = "utf-8"
+        extra = "ignore"  # Allow additional environment variables
 
 
 settings = Settings()
