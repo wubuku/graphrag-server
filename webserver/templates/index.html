@@ -1,95 +1,191 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>GraphRAG Web Server Homepage</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GraphRAG Chat</title>
+    <!-- 引入 Markdown 渲染库 -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@4.0.0/marked.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
             background-color: #f6f8fa;
             margin: 0;
-            padding: 0;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
+            padding: 20px;
             color: #24292e;
         }
         .container {
             max-width: 800px;
-            width: 100%;
+            margin: 0 auto;
             background-color: #fff;
             padding: 20px;
             box-shadow: 0 1px 3px rgba(27, 31, 35, 0.12), 0 8px 24px rgba(27, 31, 35, 0.12);
             border-radius: 6px;
         }
-        h2 {
+        h1 {
             color: #0366d6;
             font-size: 1.75em;
             border-bottom: 1px solid #e1e4e8;
             padding-bottom: 0.3em;
+            margin-top: 0;
         }
-        h3 {
-            color: #0366d6;
-            font-size: 1.5em;
+        .chat-container {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
         }
-        p {
-            line-height: 1.5;
-            font-size: 1em;
+        .chat-box {
+            flex-grow: 1;
+            border: 1px solid #e1e4e8;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 15px;
+            min-height: 300px;
+            max-height: 500px;
+            overflow-y: auto;
+            background-color: #fafbfc;
         }
-        .wechat-img {
-            display: block;
-            margin: 20px auto;
-            width: 400px;
-            height: 105px;
-            border: 1px solid #d1d5da;
+        .input-container {
+            display: flex;
+            gap: 10px;
+        }
+        #user-input {
+            flex-grow: 1;
+            padding: 10px;
+            border: 1px solid #e1e4e8;
             border-radius: 6px;
         }
-        ul {
-            padding-left: 20px;
+        button {
+            background-color: #0366d6;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 10px 15px;
+            cursor: pointer;
         }
-        ul li {
-            margin: 5px 0;
+        button:hover {
+            background-color: #0056b3;
         }
-        .contact, .project {
-            margin-bottom: 20px;
+        .model-selector {
+            margin-bottom: 15px;
         }
-        .footer {
-            text-align: center;
-            margin-top: 20px;
-            color: #586069;
-            font-size: 0.9em;
+        .model-selector select {
+            padding: 8px;
+            border-radius: 6px;
+            border: 1px solid #e1e4e8;
         }
-        a {
+        .loading {
+            display: none;
+            margin-top: 10px;
+        }
+        .response-content {
+            padding: 10px;
+            border-left: 3px solid #0366d6;
+            margin-top: 10px;
+            background-color: #f1f8ff;
+        }
+        .response-content a {
             color: #0366d6;
             text-decoration: none;
         }
-        a:hover {
+        .response-content a:hover {
             text-decoration: underline;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h2>GraphRAG Web Server</h2>
-        <div class="contact">
-            <p>邮箱: <a href="mailto:kose2livs@gmail.com">kose2livs@gmail.com</a></p>
-            <p>公众号: 深入LLM Agent应用开发</p>
-            <img src="/static/wechat_qr_code.png" alt="微信公众号二维码" class="wechat-img">
-        </div>
-        <div class="project">
-            <h3>项目介绍:</h3>
-            <ul>
-                <li>1. 输入输出兼容OpenAI SDK</li>
-                <li>2. 支持真流式输出，响应快速方便接入各种UI支持</li>
-                <li>3. 支持自动获取GraphRAG索引文件</li>
-                <li>4. 支持一键可视化到Neo4j</li>
-                <li>5. [TODO] 集成huggingface embedding</li>
-                <li>6. [TODO] 支持PDF输入</li>
-            </ul>
-        </div>
-        <div class="footer">
-            <p>&copy; 2024 KylinMountain@github.com. All rights reserved.</p>
+        <h1>GraphRAG Chat</h1>
+        <div class="chat-container">
+            <div class="model-selector">
+                <label for="model-select">Search Engine: </label>
+                <select id="model-select">
+                    <option value="local">Local Search</option>
+                    <option value="global">Global Search</option>
+                    <option value="drift">DRIFT Search</option>
+                    <option value="basic">Basic Search</option>
+                </select>
+            </div>
+            <div class="chat-box" id="chat-box"></div>
+            <div class="loading" id="loading">Processing your request...</div>
+            <div class="input-container">
+                <input type="text" id="user-input" placeholder="Ask a question..." />
+                <button id="send-button">Send</button>
+            </div>
         </div>
     </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const chatBox = document.getElementById('chat-box');
+            const userInput = document.getElementById('user-input');
+            const sendButton = document.getElementById('send-button');
+            const modelSelect = document.getElementById('model-select');
+            const loading = document.getElementById('loading');
+
+            // 发送问题到 GraphRAG API
+            async function sendQuestion() {
+                const question = userInput.value.trim();
+                if (!question) return;
+
+                // 显示用户问题
+                const userDiv = document.createElement('div');
+                userDiv.innerHTML = `<strong>You:</strong> ${question}`;
+                chatBox.appendChild(userDiv);
+                
+                // 清空输入框并显示加载状态
+                userInput.value = '';
+                loading.style.display = 'block';
+
+                try {
+                    const response = await fetch('/v1/chat/completions', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            model: modelSelect.value,
+                            messages: [
+                                {role: "user", content: question}
+                            ],
+                            stream: false
+                        })
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`Error: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    
+                    // 获取回答内容
+                    const content = data.choices[0].message.content;
+                    
+                    // 创建回答容器
+                    const responseDiv = document.createElement('div');
+                    responseDiv.innerHTML = `<strong>GraphRAG:</strong><div class="response-content">${marked.parse(content)}</div>`;
+                    chatBox.appendChild(responseDiv);
+                } catch (error) {
+                    console.error('Error:', error);
+                    const errorDiv = document.createElement('div');
+                    errorDiv.innerHTML = `<strong>Error:</strong> ${error.message}`;
+                    errorDiv.style.color = 'red';
+                    chatBox.appendChild(errorDiv);
+                } finally {
+                    loading.style.display = 'none';
+                    // 滚动到最新消息
+                    chatBox.scrollTop = chatBox.scrollHeight;
+                }
+            }
+
+            // 点击发送按钮或按回车键发送问题
+            sendButton.addEventListener('click', sendQuestion);
+            userInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    sendQuestion();
+                }
+            });
+        });
+    </script>
 </body>
 </html>
