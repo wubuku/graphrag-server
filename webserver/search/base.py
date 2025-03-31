@@ -141,7 +141,10 @@ class SearchEngineHandler:
                     entities=self.data[consts.ENTITY_TABLE],
                     communities=self.data[consts.COMMUNITY_TABLE],
                     community_reports=self.data[consts.COMMUNITY_REPORT_TABLE],
-                    query=query
+                    query=query,
+                    community_level=consts.COMMUNITY_LEVEL,
+                    dynamic_community_selection=False,
+                    response_type="Multiple Paragraphs"
                 )
                 
                 return {
@@ -189,7 +192,9 @@ class SearchEngineHandler:
                     community_reports=self.data[consts.COMMUNITY_REPORT_TABLE],
                     text_units=self.data[consts.TEXT_UNIT_TABLE],
                     relationships=self.data[consts.RELATIONSHIP_TABLE],
-                    query=query
+                    query=query,
+                    community_level=consts.COMMUNITY_LEVEL,
+                    response_type="Multiple Paragraphs"
                 )
                 
                 return {
@@ -270,7 +275,10 @@ class SearchEngineHandler:
                     communities=self.data[consts.COMMUNITY_TABLE],
                     community_reports=self.data[consts.COMMUNITY_REPORT_TABLE],
                     query=query,
-                    callbacks=[callbacks]
+                    callbacks=[callbacks],
+                    community_level=consts.COMMUNITY_LEVEL,
+                    dynamic_community_selection=False,
+                    response_type="Multiple Paragraphs"
                 ):
                     yield chunk
             
@@ -308,7 +316,9 @@ class SearchEngineHandler:
                     text_units=self.data[consts.TEXT_UNIT_TABLE],
                     relationships=self.data[consts.RELATIONSHIP_TABLE],
                     query=query,
-                    callbacks=[callbacks]
+                    callbacks=[callbacks],
+                    community_level=consts.COMMUNITY_LEVEL,
+                    response_type="Multiple Paragraphs"
                 ):
                     yield chunk
                     
