@@ -235,7 +235,7 @@ if reference:
 
 此端点渲染HTML模板（如`entities_template.html`），以在用户点击时显示每个引用的详细信息。
 
-## 实际工作流程
+### 实际工作流程
 
 1. 用户提出问题
 2. 系统将问题发送给LLM，并附带指导其使用特殊引用格式的系统提示
@@ -252,7 +252,7 @@ if reference:
     Leonardo's early promise was recognized by his father, who took some of his drawings to Andrea del Verrocchio, a renowned artist and sculptor. Impressed by Leonardo's talent, Verrocchio accepted him into his workshop around 1469-1470. Here, Leonardo met other notable artists, including Botticelli and Lorenzo di Credi [Data: Sources (6, 7)]. By 1472, Leonardo was admitted into the Guild of Florentine Painters, marking the beginning of his professional career [Data: Sources (7)].
 ```
 
-## 注意事项
+### 注意事项
 
 1. **index_id参数**: 在引用URL中的`index_id`参数（如`http://localhost:20213/v1/references/local/entities/123`中的"local"）实际上在当前实现中未被使用。服务器总是使用配置文件中指定的单一数据源，无论URL中提供的`index_id`值是什么。
 
@@ -264,3 +264,22 @@ if reference:
    - `reports_template.html`
    - `sources_template.html`
    - `index.html` (主页) 
+
+## 使用 Docker 运行
+
+如果需要使用 Docker 运行，可以参考下面的命令：
+
+```shell
+docker run -d \
+  -p 20213:20213 \
+  -e GRAPHRAG_API_KEY=YOUR_OPENAI_API_KEY \
+  -e DEEPSEEK_API_KEY=YOUR_DEEPSEEK_API_KEY \
+  -e GRAPHRAG_ROOT_DIR=/app/data \
+  -e GRAPHRAG_REFERENCE_BASE_URL=YOUR_REFERENCE_BASE_URL \
+  -e GRAPHRAG_SERVER_PORT=20213 \
+  -v /PATH/TO/YOUR/DATA/DIR:/app/data \
+  --name graphrag-server \
+  {IMAGE_NAME}
+```
+
+你需要将占位符 YOUR_OPENAI_API_KEY、YOUR_DEEPSEEK_API_KEY、YOUR_REFERENCE_BASE_URL 替换为实际值。
