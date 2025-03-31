@@ -1,6 +1,7 @@
 import os
 import logging
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
+import json
 
 import pandas as pd
 import numpy as np
@@ -34,7 +35,7 @@ def restore_debug_mode(original_mode):
 
 logger = logging.getLogger(__name__)
 
-async def get_index_data(input_dir: str, datatype: str, id: Optional[int] = None):
+async def get_index_data(input_dir: str, datatype: str, id: Optional[str] = None):
     """Get index data of specified type and ID
     
     Args:
@@ -51,28 +52,20 @@ async def get_index_data(input_dir: str, datatype: str, id: Optional[int] = None
     if DEBUG_MODE:
         logger.info(f"ID type: {type(id)}, ID value: {id}")
     
-    # Convert ID to integer if possible
-    row_id = id
-    if isinstance(id, str):
-        try:
-            row_id = int(id)
-            if DEBUG_MODE:
-                logger.info(f"Converted string ID '{id}' to int: {row_id}")
-        except ValueError:
-            if DEBUG_MODE:
-                logger.info(f"Could not convert ID '{id}' to int, keeping as string")
-    
-    if datatype == "entities":
-        return await get_entity(input_dir, row_id)
+    # Handle all data types with string ID (no conversion to int)
+    if datatype == "documents":
+        return await get_document(input_dir, id)
+    elif datatype == "sources":
+        return await get_source(input_dir, id)
+    elif datatype == "entities":
+        return await get_entity(input_dir, id)
     # Covariates feature removed in GraphRAG 2.1.0
     # elif datatype == "claims":
     #     return await get_claim(input_dir, id)
-    elif datatype == "sources":
-        return await get_source(input_dir, row_id)
     elif datatype == "reports":
-        return await get_report(input_dir, row_id)
+        return await get_report(input_dir, id)
     elif datatype == "relationships":
-        return await get_relationship(input_dir, row_id)
+        return await get_relationship(input_dir, id)
     else:
         raise ValueError(f"Unknown datatype: {datatype}")
 
@@ -222,7 +215,7 @@ async def debug_entity_ids(input_dir: str) -> List[str]:
         return []
 
 
-async def get_entity(input_dir: str, row_id: Optional[int] = None) -> Entity:
+async def get_entity(input_dir: str, id: Optional[str] = None) -> Entity:
     """Get entity data
     
     In GraphRAG 2.1.0, entity and embedding information are merged into a single file
@@ -235,7 +228,7 @@ async def get_entity(input_dir: str, row_id: Optional[int] = None) -> Entity:
         
         # Add debug logs only when DEBUG_MODE is enabled
         if DEBUG_MODE:
-            logger.info(f"Looking for entity with ID={row_id}")
+            logger.info(f"Looking for entity with ID={id}")
             # Run debug function
             await debug_entity_ids(input_dir)
             
@@ -250,44 +243,44 @@ async def get_entity(input_dir: str, row_id: Optional[int] = None) -> Entity:
             matching_rows = pd.DataFrame()
             
             # String matching
-            string_matches = entity_df[entity_df['id'].astype(str) == str(row_id)]
+            string_matches = entity_df[entity_df['id'].astype(str) == str(id)]
             if not string_matches.empty:
                 matching_rows = string_matches
                 if DEBUG_MODE:
-                    logger.info(f"Found {len(matching_rows)} matches with string comparison for ID={row_id}")
+                    logger.info(f"Found {len(matching_rows)} matches with string comparison for ID={id}")
             
             # If still no match, try integer matching
             if matching_rows.empty:
                 try:
-                    int_id = int(row_id)
+                    int_id = int(id)
                     if entity_df['id'].dtype == 'int64' or entity_df['id'].dtype == 'int32':
                         int_matches = entity_df[entity_df['id'] == int_id]
                         if not int_matches.empty:
                             matching_rows = int_matches
                             if DEBUG_MODE:
-                                logger.info(f"Found {len(matching_rows)} matches with integer comparison for ID={row_id}")
+                                logger.info(f"Found {len(matching_rows)} matches with integer comparison for ID={id}")
                 except (ValueError, TypeError):
                     pass
             
             # If no match found, try using short_id
             if matching_rows.empty and 'short_id' in entity_df.columns:
                 # String matching
-                short_id_matches = entity_df[entity_df['short_id'].astype(str) == str(row_id)]
+                short_id_matches = entity_df[entity_df['short_id'].astype(str) == str(id)]
                 if not short_id_matches.empty:
                     matching_rows = short_id_matches
                     if DEBUG_MODE:
-                        logger.info(f"Found {len(matching_rows)} matches with string comparison for short_id={row_id}")
+                        logger.info(f"Found {len(matching_rows)} matches with string comparison for short_id={id}")
                 
                 # If still no match, try integer matching
                 if matching_rows.empty:
                     try:
-                        int_id = int(row_id)
+                        int_id = int(id)
                         if entity_df['short_id'].dtype == 'int64' or entity_df['short_id'].dtype == 'int32':
                             int_matches = entity_df[entity_df['short_id'] == int_id]
                             if not int_matches.empty:
                                 matching_rows = int_matches
                                 if DEBUG_MODE:
-                                    logger.info(f"Found {len(matching_rows)} matches with integer comparison for short_id={row_id}")
+                                    logger.info(f"Found {len(matching_rows)} matches with integer comparison for short_id={id}")
                     except (ValueError, TypeError):
                         pass
             
@@ -296,11 +289,11 @@ async def get_entity(input_dir: str, row_id: Optional[int] = None) -> Entity:
                 for col in entity_df.columns:
                     if 'id' in col.lower() and col not in ['id', 'short_id']:
                         try:
-                            potential_matches = entity_df[entity_df[col].astype(str) == str(row_id)]
+                            potential_matches = entity_df[entity_df[col].astype(str) == str(id)]
                             if not potential_matches.empty:
                                 matching_rows = potential_matches
                                 if DEBUG_MODE:
-                                    logger.info(f"Found {len(matching_rows)} matches in column {col} for ID={row_id}")
+                                    logger.info(f"Found {len(matching_rows)} matches in column {col} for ID={id}")
                                 break
                         except:
                             continue
@@ -309,13 +302,13 @@ async def get_entity(input_dir: str, row_id: Optional[int] = None) -> Entity:
                 # Found matching record, construct entity directly from DataFrame
                 row = matching_rows.iloc[0]
                 if DEBUG_MODE:
-                    logger.info(f"Found matching entity with id={row_id}")
+                    logger.info(f"Found matching entity with id={id}")
                 
                 # In GraphRAG 2.1.0, Entity class only accepts the following parameters
                 # Create entity attribute dictionary, only including columns supported by GraphRAG 2.1.0 Entity class
                 entity_attrs = {
                     'id': str(row['id']),
-                    'short_id': str(row_id),
+                    'short_id': str(id),
                     'title': row['title'] if 'title' in row else "No Title",
                     'description': row['description'] if 'description' in row else "",
                     'type': row['type'] if 'type' in row else "unknown"
@@ -340,7 +333,7 @@ async def get_entity(input_dir: str, row_id: Optional[int] = None) -> Entity:
                     logger.info(f"Creating Entity with attributes: {list(entity_attrs.keys())}")
                 return Entity(**entity_attrs)
             else:
-                logger.warning(f"Could not find entity with id={row_id} using direct DataFrame lookup")
+                logger.warning(f"Could not find entity with id={id} using direct DataFrame lookup")
                 
                 # If no match found, try logging some entity ID examples
                 if DEBUG_MODE:
@@ -373,16 +366,16 @@ async def get_entity(input_dir: str, row_id: Optional[int] = None) -> Entity:
                     
             # Regardless of which adapter is used, find matching entity
             for entity in entities:
-                if int(entity.short_id) == row_id:
+                if int(entity.short_id) == int(id):
                     if DEBUG_MODE:
-                        logger.info(f"Found entity with adapter, id={row_id}")
+                        logger.info(f"Found entity with adapter, id={id}")
                     return entity
                     
             # If still not found, try other possible matches
             for entity in entities:
-                if str(entity.id) == str(row_id):
+                if str(entity.id) == str(id):
                     if DEBUG_MODE:
-                        logger.info(f"Found entity by matching ID field instead of short_id, id={row_id}")
+                        logger.info(f"Found entity by matching ID field instead of short_id, id={id}")
                     return entity
                     
         except Exception as adapter_error:
@@ -394,15 +387,15 @@ async def get_entity(input_dir: str, row_id: Optional[int] = None) -> Entity:
                     # Use various possible matching methods
                     potential_id_fields = ['id', 'short_id', 'entity_id']
                     for id_field in potential_id_fields:
-                        if id_field in row and str(row[id_field]) == str(row_id):
+                        if id_field in row and str(row[id_field]) == str(id):
                             if DEBUG_MODE:
-                                logger.info(f"Found entity using fallback method with {id_field}={row_id}")
+                                logger.info(f"Found entity using fallback method with {id_field}={id}")
                             
                             # Create basic object, use only valid fields
                             return Entity(
-                                id=str(row['id']) if 'id' in row else str(row_id),
-                                short_id=str(row_id),
-                                title=row['title'] if 'title' in row else str(row_id),
+                                id=str(row['id']) if 'id' in row else str(id),
+                                short_id=str(id),
+                                title=row['title'] if 'title' in row else str(id),
                                 description=row.get('description', ""),
                                 type=row.get('type', "entity")
                             )
@@ -412,14 +405,14 @@ async def get_entity(input_dir: str, row_id: Optional[int] = None) -> Entity:
                 first_row = entity_df.iloc[0]
                 return Entity(
                     id="not_found",
-                    short_id=str(row_id),
-                    title=f"Entity {row_id} (Data available but not matched)",
+                    short_id=str(id),
+                    title=f"Entity {id} (Data available but not matched)",
                     description="Entity data could not be matched by ID but data exists",
                     type="unknown"
                 )
         
         # If execution reaches here, it means the entity truly doesn't exist
-        raise ValueError(f"Not Found entity id {row_id}")
+        raise ValueError(f"Not Found entity id {id}")
     except Exception as e:
         logger.error(f"Error loading entity: {str(e)}", exc_info=True)
         # Return an empty entity object to avoid page crash
@@ -440,7 +433,7 @@ async def get_claim(input_dir: str, row_id: Optional[int] = None) -> Covariate:
 """
 
 
-async def get_source(input_dir: str, row_id: Optional[int] = None) -> TextUnit:
+async def get_source(input_dir: str, id: Optional[str] = None) -> TextUnit:
     """Get text unit data"""
     source_path = os.path.join(input_dir, f"{consts.TEXT_UNIT_TABLE}.parquet")
     logger.info(f"Loading source data from {source_path}")
@@ -452,15 +445,21 @@ async def get_source(input_dir: str, row_id: Optional[int] = None) -> TextUnit:
         if DEBUG_MODE:
             logger.info(f"Text Unit DataFrame columns: {text_unit_df.columns.tolist()}")
             logger.info(f"Sample text unit data (first row): {text_unit_df.iloc[0].to_dict() if len(text_unit_df) > 0 else 'Empty DataFrame'}")
+            logger.info(f"Looking for text unit with ID type: {type(id)}, value: {id}")
         
         # Check if specified ID exists
         if 'id' in text_unit_df.columns:
-            # Try exact match first
-            matching_rows = text_unit_df[text_unit_df['id'].astype(str) == str(row_id)]
+            # Try exact match first - compare as strings to handle hash IDs
+            id_matches = (text_unit_df['id'].astype(str) == str(id))
+            matching_rows = text_unit_df[id_matches]
+            
+            if DEBUG_MODE and not matching_rows.empty:
+                logger.info(f"Found {len(matching_rows)} matches for ID={id}")
             
             # If no exact match, try matching where short_id might be
             if matching_rows.empty and 'short_id' in text_unit_df.columns:
-                matching_rows = text_unit_df[text_unit_df['short_id'].astype(str) == str(row_id)]
+                short_id_matches = (text_unit_df['short_id'].astype(str) == str(id))
+                matching_rows = text_unit_df[short_id_matches]
                 if DEBUG_MODE:
                     logger.info(f"Tried matching by short_id, found: {len(matching_rows)} rows")
             
@@ -468,23 +467,19 @@ async def get_source(input_dir: str, row_id: Optional[int] = None) -> TextUnit:
                 # Found matching record, construct TextUnit directly from DataFrame
                 row = matching_rows.iloc[0]
                 if DEBUG_MODE:
-                    logger.info(f"Found matching text unit with id={row_id}")
+                    logger.info(f"Found matching text unit with id={id}")
                 
                 # Create TextUnit attribute dictionary with existing columns
                 text_unit_attrs = {
                     'id': str(row['id']),
-                    'short_id': str(row_id),
+                    'short_id': str(id),
                     'text': row['text'] if 'text' in row else "No Text"
                 }
                 
-                # Add required file field
-                if 'file' in row:
-                    text_unit_attrs['file'] = row['file']
-                else:
-                    text_unit_attrs['file'] = "unknown"
+                # Note: 'file' parameter removed in GraphRAG 2.1.0
                 
                 # Add optional fields - with array check fix
-                for field in ['n_tokens', 'document_ids', 'entity_ids', 'relationship_ids', 'covariate_ids', 'human_readable_id']:
+                for field in ['n_tokens', 'document_ids', 'entity_ids', 'relationship_ids', 'covariate_ids']:
                     if field in row:
                         # Safely check for NaN, handling array cases
                         field_value = row[field]
@@ -498,7 +493,7 @@ async def get_source(input_dir: str, row_id: Optional[int] = None) -> TextUnit:
                 
                 return TextUnit(**text_unit_attrs)
             else:
-                logger.warning(f"Could not find text unit with id={row_id} using direct DataFrame lookup")
+                logger.warning(f"Could not find text unit with id={id} using direct DataFrame lookup")
         
         # If direct method above doesn't work, try safely using adapter
         try:
@@ -506,19 +501,28 @@ async def get_source(input_dir: str, row_id: Optional[int] = None) -> TextUnit:
                 logger.info("Attempting to use adapter function")
             text_units = read_indexer_text_units(text_unit_df)
             
-            for text_unit in text_units:
-                if int(text_unit.short_id) == row_id:
-                    if DEBUG_MODE:
-                        logger.info(f"Found text unit with adapter, id={row_id}")
-                    return text_unit
-                    
-            # If still not found, try other possible matches
-            for text_unit in text_units:
-                if str(text_unit.id) == str(row_id):
-                    if DEBUG_MODE:
-                        logger.info(f"Found text unit by matching ID field instead of short_id, id={row_id}")
-                    return text_unit
+            # Check if text_units is None or empty before iterating
+            if text_units:
+                # First try to match by string ID (for hash IDs)
+                for text_unit in text_units:
+                    if str(text_unit.id) == str(id):
+                        if DEBUG_MODE:
+                            logger.info(f"Found text unit by matching ID field, id={id}")
+                        return text_unit
                 
+                # Then try short_id for backward compatibility with integer IDs
+                for text_unit in text_units:
+                    try:
+                        if int(text_unit.short_id) == int(id):
+                            if DEBUG_MODE:
+                                logger.info(f"Found text unit with adapter using short_id, id={id}")
+                            return text_unit
+                    except (ValueError, TypeError):
+                        # Skip comparison if IDs can't be converted to int
+                        pass
+            elif DEBUG_MODE:
+                logger.warning("Adapter function returned None or empty list")
+                    
         except Exception as adapter_error:
             logger.error(f"Error in adapter function: {str(adapter_error)}", exc_info=True)
             
@@ -528,41 +532,38 @@ async def get_source(input_dir: str, row_id: Optional[int] = None) -> TextUnit:
                     # Use various possible matching methods
                     potential_id_fields = ['id', 'short_id', 'text_unit_id']
                     for id_field in potential_id_fields:
-                        if id_field in row and str(row[id_field]) == str(row_id):
+                        if id_field in row and str(row[id_field]) == str(id):
                             if DEBUG_MODE:
-                                logger.info(f"Found text unit using fallback method with {id_field}={row_id}")
+                                logger.info(f"Found text unit using fallback method with {id_field}={id}")
                             
-                            # Create basic object
+                            # Create basic object without 'file' parameter (removed in GraphRAG 2.1.0)
                             return TextUnit(
-                                id=str(row['id']) if 'id' in row else str(row_id),
-                                short_id=str(row_id),
-                                file=row.get('file', "unknown"),
-                                text=row['text'] if 'text' in row else f"Text unit {row_id}"
+                                id=str(row['id']) if 'id' in row else str(id),
+                                short_id=str(id),
+                                text=row['text'] if 'text' in row else f"Text unit {id}"
                             )
                 
                 # If still not found, create default object
                 logger.warning(f"Falling back to a default text unit with data from first row")
                 return TextUnit(
                     id="not_found",
-                    short_id=str(row_id),
-                    file="unknown",
-                    text=f"Text unit {row_id} (Data available but not matched)"
+                    short_id=str(id),
+                    text=f"Text unit {id} (Data available but not matched)"
                 )
         
         # If execution reaches here, it means the text unit truly doesn't exist
-        raise ValueError(f"Not Found source id {row_id}")
+        raise ValueError(f"Not Found source id {id}")
     except Exception as e:
         logger.error(f"Error loading source: {str(e)}", exc_info=True)
         # Return an empty text unit object to avoid page crash
         return TextUnit(
             id="error",
             short_id="0",
-            file="error",
             text=f"Error: {str(e)}\nCould not load source data. Check server logs for details."
         )
 
 
-async def get_report(input_dir: str, row_id: Optional[int] = None) -> CommunityReport:
+async def get_report(input_dir: str, id: Optional[str] = None) -> CommunityReport:
     """Get community report data"""
     try:
         report_path = os.path.join(input_dir, f"{consts.COMMUNITY_REPORT_TABLE}.parquet")
@@ -579,7 +580,7 @@ async def get_report(input_dir: str, row_id: Optional[int] = None) -> CommunityR
             if 'id' in report_df.columns:
                 sample_ids = report_df['id'].head(10).tolist()
                 logger.info(f"Sample IDs in dataframe: {sample_ids}")
-            logger.info(f"Looking for report with ID type: {type(row_id)}, value: {row_id}")
+            logger.info(f"Looking for report with ID type: {type(id)}, value: {id}")
         
         # Check if specified ID exists
         if 'id' in report_df.columns:
@@ -587,50 +588,50 @@ async def get_report(input_dir: str, row_id: Optional[int] = None) -> CommunityR
             matching_rows = pd.DataFrame()
             
             # Method 1: Direct string matching (most reliable across types)
-            string_match = report_df[report_df['id'].astype(str) == str(row_id)]
+            string_match = report_df[report_df['id'].astype(str) == str(id)]
             if not string_match.empty:
                 matching_rows = string_match
                 if DEBUG_MODE:
-                    logger.info(f"Found {len(matching_rows)} matches using string comparison for ID={row_id}")
+                    logger.info(f"Found {len(matching_rows)} matches using string comparison for ID={id}")
             
             # Method 2: Try integer matching if possible
             if matching_rows.empty:
                 try:
-                    int_id = int(row_id)
+                    int_id = int(id)
                     if report_df['id'].dtype == 'int64' or report_df['id'].dtype == 'int32':
                         int_match = report_df[report_df['id'] == int_id]
                         if not int_match.empty:
                             matching_rows = int_match
                             if DEBUG_MODE:
-                                logger.info(f"Found {len(matching_rows)} matches using integer comparison for ID={row_id}")
+                                logger.info(f"Found {len(matching_rows)} matches using integer comparison for ID={id}")
                 except (ValueError, TypeError):
                     pass
             
             # Method 3: Try using short_id if it exists
             if matching_rows.empty and 'short_id' in report_df.columns:
-                short_id_match = report_df[report_df['short_id'].astype(str) == str(row_id)]
+                short_id_match = report_df[report_df['short_id'].astype(str) == str(id)]
                 if not short_id_match.empty:
                     matching_rows = short_id_match
                     if DEBUG_MODE:
-                        logger.info(f"Found {len(matching_rows)} matches using short_id={row_id}")
+                        logger.info(f"Found {len(matching_rows)} matches using short_id={id}")
             
             # Method 4: Try human_readable_id if it exists
             if matching_rows.empty and 'human_readable_id' in report_df.columns:
-                human_id_match = report_df[report_df['human_readable_id'].astype(str) == str(row_id)]
+                human_id_match = report_df[report_df['human_readable_id'].astype(str) == str(id)]
                 if not human_id_match.empty:
                     matching_rows = human_id_match
                     if DEBUG_MODE:
-                        logger.info(f"Found {len(matching_rows)} matches using human_readable_id={row_id}")
+                        logger.info(f"Found {len(matching_rows)} matches using human_readable_id={id}")
             
             # Last resort: Look for any integer index matching the row_id (position-based fallback)
-            if matching_rows.empty and isinstance(row_id, int) and row_id < len(report_df):
+            if matching_rows.empty and isinstance(id, int) and id < len(report_df):
                 # Try to use row_id as a positional index
                 if DEBUG_MODE:
-                    logger.info(f"Attempting to use row_id={row_id} as a positional index")
+                    logger.info(f"Attempting to use row_id={id} as a positional index")
                 try:
-                    matching_rows = report_df.iloc[[row_id]]
+                    matching_rows = report_df.iloc[[id]]
                     if DEBUG_MODE:
-                        logger.info(f"Found match using row_id={row_id} as positional index")
+                        logger.info(f"Found match using row_id={id} as positional index")
                 except IndexError:
                     pass
             
@@ -638,13 +639,13 @@ async def get_report(input_dir: str, row_id: Optional[int] = None) -> CommunityR
                 # Found matching record, construct CommunityReport directly from DataFrame
                 row = matching_rows.iloc[0]
                 if DEBUG_MODE:
-                    logger.info(f"Found matching report with id={row_id}")
+                    logger.info(f"Found matching report with id={id}")
                     logger.info(f"Matched row data: {row.to_dict()}")
                 
                 # Create CommunityReport attribute dictionary with required columns
                 report_dict = {
                     "id": str(row['id']),
-                    "short_id": str(row_id),
+                    "short_id": str(id),
                     "community_id": str(row['community']) if 'community' in row else "",
                     "summary": "",  # Default empty summary
                     "title": row.get("title", f"Report {row['id']}") if not pd.isna(row.get("title", "")) else f"Report {row['id']}",  # Default title
@@ -692,7 +693,7 @@ async def get_report(input_dir: str, row_id: Optional[int] = None) -> CommunityR
                 
                 return CommunityReport(**report_dict)
             else:
-                logger.warning(f"Could not find report with id={row_id} using direct DataFrame lookup")
+                logger.warning(f"Could not find report with id={id} using direct DataFrame lookup")
                 if DEBUG_MODE:
                     # Print some sample IDs to help diagnose the issue
                     if 'id' in report_df.columns:
@@ -709,16 +710,16 @@ async def get_report(input_dir: str, row_id: Optional[int] = None) -> CommunityR
             reports = read_indexer_reports(report_df)
             
             for report in reports:
-                if int(report.short_id) == row_id:
+                if int(report.short_id) == int(id):
                     if DEBUG_MODE:
-                        logger.info(f"Found report with adapter, id={row_id}")
+                        logger.info(f"Found report with adapter, id={id}")
                     return report
                     
             # If still not found, try other possible matches
             for report in reports:
-                if str(report.id) == str(row_id):
+                if str(report.id) == str(id):
                     if DEBUG_MODE:
-                        logger.info(f"Found report by matching ID field instead of short_id, id={row_id}")
+                        logger.info(f"Found report by matching ID field instead of short_id, id={id}")
                     return report
                 
         except Exception as adapter_error:
@@ -730,17 +731,17 @@ async def get_report(input_dir: str, row_id: Optional[int] = None) -> CommunityR
                     # Use various possible matching methods
                     potential_id_fields = ['id', 'short_id', 'report_id']
                     for id_field in potential_id_fields:
-                        if id_field in row and str(row[id_field]) == str(row_id):
+                        if id_field in row and str(row[id_field]) == str(id):
                             if DEBUG_MODE:
-                                logger.info(f"Found report using fallback method with {id_field}={row_id}")
+                                logger.info(f"Found report using fallback method with {id_field}={id}")
                             
                             # Create basic object
                             return CommunityReport(
-                                id=str(row['id']) if 'id' in row else str(row_id),
-                                short_id=str(row_id),
+                                id=str(row['id']) if 'id' in row else str(id),
+                                short_id=str(id),
                                 community_id=str(row['community']) if 'community' in row else "",
-                                summary=row['summary'] if 'summary' in row and not pd.isna(row['summary']) else f"Report {row_id}",
-                                title=f"Report {row_id}",
+                                summary=row['summary'] if 'summary' in row and not pd.isna(row['summary']) else f"Report {id}",
+                                title=f"Report {id}",
                                 attributes={}
                             )
                 
@@ -748,15 +749,15 @@ async def get_report(input_dir: str, row_id: Optional[int] = None) -> CommunityR
                 logger.warning(f"Falling back to a default report with data from first row")
                 return CommunityReport(
                     id="not_found",
-                    short_id=str(row_id),
+                    short_id=str(id),
                     community_id="unknown",
-                    summary=f"Report {row_id} (Data available but not matched)",
-                    title=f"Report {row_id}",
+                    summary=f"Report {id} (Data available but not matched)",
+                    title=f"Report {id}",
                     attributes={}
                 )
         
         # If execution reaches here, it means the report truly doesn't exist
-        raise ValueError(f"Not Found report id {row_id}")
+        raise ValueError(f"Not Found report id {id}")
     except Exception as e:
         logger.error(f"Error loading report: {str(e)}", exc_info=True)
         # Return an empty report object to avoid page crash
@@ -765,12 +766,12 @@ async def get_report(input_dir: str, row_id: Optional[int] = None) -> CommunityR
             short_id="0",
             community_id="error",
             summary=f"Error: {str(e)}\nCould not load report data. Check server logs for details.",
-            title=f"Report {row_id}",
+            title=f"Report {id}",
             attributes={}
         )
 
 
-async def get_relationship(input_dir: str, row_id: Optional[int] = None) -> Relationship:
+async def get_relationship(input_dir: str, id: Optional[str] = None) -> Relationship:
     """Get relationship data"""
     try:
         relationship_path = os.path.join(input_dir, f"{consts.RELATIONSHIP_TABLE}.parquet")
@@ -786,11 +787,11 @@ async def get_relationship(input_dir: str, row_id: Optional[int] = None) -> Rela
         # Check if specified ID exists
         if 'id' in relationship_df.columns:
             # Try exact match first
-            matching_rows = relationship_df[relationship_df['id'].astype(str) == str(row_id)]
+            matching_rows = relationship_df[relationship_df['id'].astype(str) == str(id)]
             
             # If no exact match, try matching where short_id might be
             if matching_rows.empty and 'short_id' in relationship_df.columns:
-                matching_rows = relationship_df[relationship_df['short_id'].astype(str) == str(row_id)]
+                matching_rows = relationship_df[relationship_df['short_id'].astype(str) == str(id)]
                 if DEBUG_MODE:
                     logger.info(f"Tried matching by short_id, found: {len(matching_rows)} rows")
             
@@ -798,19 +799,19 @@ async def get_relationship(input_dir: str, row_id: Optional[int] = None) -> Rela
                 # Found matching record, construct Relationship directly from DataFrame
                 row = matching_rows.iloc[0]
                 if DEBUG_MODE:
-                    logger.info(f"Found matching relationship with id={row_id}")
+                    logger.info(f"Found matching relationship with id={id}")
                 
                 # Create Relationship attribute dictionary with required columns
                 rel_attrs = {
                     'id': str(row['id']),
-                    'short_id': str(row_id),
+                    'short_id': str(id),
                     'source': str(row['source']) if 'source' in row else "unknown",
                     'target': str(row['target']) if 'target' in row else "unknown",
                     'description': row['description'] if 'description' in row and not pd.isna(row['description']) else ""
                 }
                 
                 # Add optional fields - with array check fix
-                for field in ['weight', 'combined_degree', 'text_unit_ids', 'human_readable_id']:
+                for field in ['weight', 'text_unit_ids']:
                     if field in row:
                         # Safely check for NaN, handling array cases
                         field_value = row[field]
@@ -824,7 +825,7 @@ async def get_relationship(input_dir: str, row_id: Optional[int] = None) -> Rela
                 
                 return Relationship(**rel_attrs)
             else:
-                logger.warning(f"Could not find relationship with id={row_id} using direct DataFrame lookup")
+                logger.warning(f"Could not find relationship with id={id} using direct DataFrame lookup")
         
         # If direct method above doesn't work, try safely using adapter
         try:
@@ -833,16 +834,16 @@ async def get_relationship(input_dir: str, row_id: Optional[int] = None) -> Rela
             relationships = read_indexer_relationships(relationship_df)
             
             for relationship in relationships:
-                if int(relationship.short_id) == row_id:
+                if int(relationship.short_id) == int(id):
                     if DEBUG_MODE:
-                        logger.info(f"Found relationship with adapter, id={row_id}")
+                        logger.info(f"Found relationship with adapter, id={id}")
                     return relationship
                     
             # If still not found, try other possible matches
             for relationship in relationships:
-                if str(relationship.id) == str(row_id):
+                if str(relationship.id) == str(id):
                     if DEBUG_MODE:
-                        logger.info(f"Found relationship by matching ID field instead of short_id, id={row_id}")
+                        logger.info(f"Found relationship by matching ID field instead of short_id, id={id}")
                     return relationship
                 
         except Exception as adapter_error:
@@ -854,14 +855,14 @@ async def get_relationship(input_dir: str, row_id: Optional[int] = None) -> Rela
                     # Use various possible matching methods
                     potential_id_fields = ['id', 'short_id', 'relationship_id']
                     for id_field in potential_id_fields:
-                        if id_field in row and str(row[id_field]) == str(row_id):
+                        if id_field in row and str(row[id_field]) == str(id):
                             if DEBUG_MODE:
-                                logger.info(f"Found relationship using fallback method with {id_field}={row_id}")
+                                logger.info(f"Found relationship using fallback method with {id_field}={id}")
                             
                             # Create basic object
                             return Relationship(
-                                id=str(row['id']) if 'id' in row else str(row_id),
-                                short_id=str(row_id),
+                                id=str(row['id']) if 'id' in row else str(id),
+                                short_id=str(id),
                                 source=str(row['source']) if 'source' in row else "unknown",
                                 target=str(row['target']) if 'target' in row else "unknown",
                                 description=row.get('description', ""),
@@ -872,15 +873,15 @@ async def get_relationship(input_dir: str, row_id: Optional[int] = None) -> Rela
                 logger.warning(f"Falling back to a default relationship with data from first row")
                 return Relationship(
                     id="not_found",
-                    short_id=str(row_id),
+                    short_id=str(id),
                     source="unknown",
                     target="unknown",
-                    description=f"Relationship {row_id} (Data available but not matched)",
+                    description=f"Relationship {id} (Data available but not matched)",
                     weight=0.0
                 )
         
         # If execution reaches here, it means the relationship truly doesn't exist
-        raise ValueError(f"Not Found relationship id {row_id}")
+        raise ValueError(f"Not Found relationship id {id}")
     except Exception as e:
         logger.error(f"Error loading relationship: {str(e)}", exc_info=True)
         # Return an empty relationship object to avoid page crash
@@ -956,3 +957,95 @@ def read_community_reports(reports_df: pd.DataFrame) -> List[CommunityReport]:
     except Exception as e:
         logger.error(f"Error reading community reports: {str(e)}", exc_info=True)
         return []
+
+
+async def get_document(input_dir: str, id: Optional[str] = None) -> Dict[str, Any]:
+    """Get document data"""
+    document_path = os.path.join(input_dir, f"{consts.DOCUMENT_TABLE}.parquet")
+    logger.info(f"Loading document data from {document_path}")
+    
+    try:
+        document_df = pd.read_parquet(document_path)
+        
+        # Debug: Log DataFrame columns
+        if DEBUG_MODE:
+            logger.info(f"Document DataFrame columns: {document_df.columns.tolist()}")
+            logger.info(f"Sample document data (first row): {document_df.iloc[0].to_dict() if len(document_df) > 0 else 'Empty DataFrame'}")
+            logger.info(f"Looking for document with ID type: {type(id)}, value: {id}")
+        
+        # Check if specified ID exists
+        if 'id' in document_df.columns:
+            # Try exact string match - this works for both integer and string IDs
+            # Convert both sides to string for comparison
+            id_matches = (document_df['id'].astype(str) == str(id))
+            matching_rows = document_df[id_matches]
+            
+            if not matching_rows.empty:
+                # Found matching record, create document data directly from DataFrame
+                row = matching_rows.iloc[0]
+                if DEBUG_MODE:
+                    logger.info(f"Found matching document with id={id}")
+                
+                # Create document data dictionary with all fields
+                document_data = {
+                    'id': str(row['id']),
+                    'short_id': str(id)  # Use id as short_id for consistency
+                }
+                
+                # Add all available fields from dataframe
+                for field in ['human_readable_id', 'title', 'text', 'text_unit_ids', 'creation_date', 'metadata']:
+                    if field in row:
+                        # Handle arrays and NaN values properly
+                        field_value = row[field]
+                        
+                        # Check if it's an array-like object
+                        if isinstance(field_value, (list, np.ndarray)) or (hasattr(field_value, 'dtype') and pd.api.types.is_array_like(field_value)):
+                            # For arrays, check if all values are NaN
+                            if pd.isna(field_value).all():
+                                # Skip this field if all values are NaN
+                                continue
+                            else:
+                                # Include the field with array values
+                                document_data[field] = field_value
+                        # For non-array values, just check if it's NaN
+                        elif not pd.isna(field_value):
+                            # Handle metadata specially
+                            if field == 'metadata' and isinstance(field_value, (dict, str)):
+                                # Format metadata as JSON if it's a dict or string
+                                if isinstance(field_value, dict):
+                                    document_data[field] = json.dumps(field_value, indent=2)
+                                else:
+                                    # Try to parse as JSON if it's a string
+                                    try:
+                                        metadata_dict = json.loads(field_value)
+                                        document_data[field] = json.dumps(metadata_dict, indent=2)
+                                    except:
+                                        document_data[field] = str(field_value)
+                            else:
+                                document_data[field] = field_value
+                
+                return document_data
+            else:
+                logger.warning(f"Could not find document with id={id}")
+                return {
+                    'id': 'not_found',
+                    'short_id': str(id),
+                    'title': f"Document {id}",
+                    'text': f"Document with ID {id} not found in the database."
+                }
+        else:
+            logger.warning(f"Document DataFrame does not have 'id' column")
+            return {
+                'id': 'error',
+                'short_id': str(id),
+                'title': 'Error: Invalid Document Data',
+                'text': 'The document data does not have the expected structure.'
+            }
+    except Exception as e:
+        logger.error(f"Error loading document: {str(e)}", exc_info=True)
+        return {
+            'id': 'error',
+            'short_id': '0',
+            'title': f"Error: {str(e)}",
+            'text': f"Could not load document data. Check server logs for details."
+        }

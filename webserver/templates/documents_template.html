@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Document Information</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        table {
+            margin: auto;
+            border-collapse: collapse;
+            width: 80%;
+        }
+        th, td {
+            border: 1px solid black;
+            padding: 8px;
+        }
+        th {
+            background-color: #f2f2f2;
+            text-align: center;
+        }
+        td {
+            text-align: left;
+        }
+        .text-content {
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+        .metadata-content {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1 style="text-align: center;">Document Information</h1>
+    <table>
+        <tr><th>Attribute</th><th>Value</th></tr>
+        <tr><td>ID</td><td>{{ data.id }}</td></tr>
+        <tr><td>URL ID param</td><td>{{ data.short_id }}</td></tr>
+{% if data.human_readable_id is defined and data.human_readable_id is not none and data.human_readable_id|string|length > 0 %}
+        <tr><td>Human Readable ID</td><td>{{ data.human_readable_id }}</td></tr>
+{% endif %}
+{% if data.title is defined and data.title is not none and data.title|string|length > 0 %}
+        <tr><td>Title</td><td>{{ data.title }}</td></tr>
+{% endif %}
+{% if data.creation_date is defined and data.creation_date is not none %}
+        <tr><td>Creation Date</td><td>{{ data.creation_date }}</td></tr>
+{% endif %}
+{% if data.text_unit_ids is defined and data.text_unit_ids is not none and data.text_unit_ids|length > 0 %}
+        <tr><td>Text Unit IDs</td>
+            <td>
+                <ul>
+                {% for id in data.text_unit_ids %}
+                    <li><a href="/v1/references/local/sources/{{ id }}" title="{{ id }}">{{ id[:10] }}...{{ id[-10:] }}</a></li>
+                {% endfor %}
+                </ul>
+            </td>
+        </tr>
+{% endif %}
+{% if data.text is defined and data.text is not none and data.text|string|length > 0 %}
+        <tr>
+            <td>Text Content</td>
+            <td>
+                <div class="text-content">{{ data.text }}</div>
+            </td>
+        </tr>
+{% endif %}
+{% if data.metadata is defined and data.metadata is not none and data.metadata|string|length > 0 %}
+        <tr>
+            <td>Metadata</td>
+            <td>
+                <div class="metadata-content">{{ data.metadata }}</div>
+            </td>
+        </tr>
+{% endif %}
+    </table>
+</body>
+</html> 

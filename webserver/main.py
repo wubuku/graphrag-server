@@ -291,11 +291,11 @@ async def list_models():
 
 
 @app.get("/v1/references/{index_id}/{datatype}/{id}", response_class=HTMLResponse)
-async def get_reference(index_id: str, datatype: str, id: int):
+async def get_reference(index_id: str, datatype: str, id: str):
     if not os.path.exists(settings.data):
         raise HTTPException(status_code=404, detail=f"Data directory {settings.data} not found")
         
-    if datatype not in ["entities", "sources", "reports", "relationships"]:
+    if datatype not in ["entities", "sources", "reports", "relationships", "documents"]:
         raise HTTPException(status_code=404, detail=f"Datatype {datatype} not supported")
 
     # Debug mode can be enabled manually if needed for troubleshooting
