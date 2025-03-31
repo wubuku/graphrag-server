@@ -25,14 +25,23 @@
     <h1 style="text-align: center;">Relationship Information</h1>
     <table>
         <tr><th>Attribute</th><th>Value</th></tr>
+        <tr><td>ID</td><td>{{ data.id }}</td></tr>
+        <tr><td>Short ID</td><td>{{ data.short_id }}</td></tr>
+{% if data.human_readable_id is defined %}
+        <tr><td>Human Readable ID</td><td>{{ data.human_readable_id }}</td></tr>
+{% endif %}
         <tr><td>Source</td><td>{{ data.source }}</td></tr>
         <tr><td>Target</td><td>{{ data.target }}</td></tr>
-        <tr><td>Weight</td><td>{{ data.weight }}</td></tr>
         <tr><td>Description</td><td>{{ data.description }}</td></tr>
-        <tr><td>Description Embedding</td><td>{{ data.description_embedding }}</td></tr>
+{% if data.weight is defined %}
+        <tr><td>Weight</td><td>{{ data.weight }}</td></tr>
+{% endif %}
+{% if data.combined_degree is defined %}
+        <tr><td>Combined Degree</td><td>{{ data.combined_degree }}</td></tr>
+{% endif %}
+{% if data.text_unit_ids is defined %}
         <tr><td>Text Unit IDs</td><td>{{ data.text_unit_ids }}</td></tr>
-        <tr><td>Document IDs</td><td>{{ data.document_ids }}</td></tr>
-        <tr><td>Attributes</td><td>{{ data.attributes }}</td></tr>
+{% endif %}
     </table>
 </body>
 </html>

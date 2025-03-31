@@ -25,14 +25,45 @@
     <h1 style="text-align: center;">Community Report Information</h1>
     <table>
         <tr><th>Attribute</th><th>Value</th></tr>
-        <tr><td>Name</td><td>{{ data.title }}</td></tr>
-        <tr><td>Community ID</td><td>{{ data.community_id }}</td></tr>
+        <tr><td>ID</td><td>{{ data.id }}</td></tr>
+        <tr><td>Short ID</td><td>{{ data.short_id }}</td></tr>
+{% if data.human_readable_id is defined %}
+        <tr><td>Human Readable ID</td><td>{{ data.human_readable_id }}</td></tr>
+{% endif %}
+{% if data.community is defined %}
+        <tr><td>Community</td><td>{{ data.community }}</td></tr>
+{% endif %}
+{% if data.level is defined %}
+        <tr><td>Level</td><td>{{ data.level }}</td></tr>
+{% endif %}
+{% if data.parent is defined %}
+        <tr><td>Parent</td><td>{{ data.parent }}</td></tr>
+{% endif %}
+{% if data.children is defined %}
+        <tr><td>Children</td><td>{{ data.children }}</td></tr>
+{% endif %}
+{% if data.title is defined %}
+        <tr><td>Title</td><td>{{ data.title }}</td></tr>
+{% endif %}
         <tr><td>Summary</td><td>{{ data.summary }}</td></tr>
+{% if data.full_content is defined %}
         <tr><td>Full Content</td><td>{{ data.full_content }}</td></tr>
+{% endif %}
+{% if data.rank is defined %}
         <tr><td>Rank</td><td>{{ data.rank }}</td></tr>
-        <tr><td>Summary Embedding</td><td>{{ data.summary_embedding }}</td></tr>
-        <tr><td>Full Content Embedding</td><td>{{ data.full_content_embedding }}</td></tr>
-        <tr><td>Attributes</td><td>{{ data.attributes }}</td></tr>
+{% endif %}
+{% if data.rating_explanation is defined %}
+        <tr><td>Rating Explanation</td><td>{{ data.rating_explanation }}</td></tr>
+{% endif %}
+{% if data.findings is defined %}
+        <tr><td>Findings</td><td>{{ data.findings }}</td></tr>
+{% endif %}
+{% if data.period is defined %}
+        <tr><td>Period</td><td>{{ data.period }}</td></tr>
+{% endif %}
+{% if data.size is defined %}
+        <tr><td>Size</td><td>{{ data.size }}</td></tr>
+{% endif %}
     </table>
 </body>
 </html>

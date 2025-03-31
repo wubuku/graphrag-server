@@ -25,17 +25,26 @@
     <h1 style="text-align: center;">Entity Information</h1>
     <table>
         <tr><th>Attribute</th><th>Value</th></tr>
-        <tr><td>Name</td><td>{{ data.title }}</td></tr>
+        <tr><td>Title</td><td>{{ data.title }}</td></tr>
         <tr><td>Type</td><td>{{ data.type }}</td></tr>
         <tr><td>Description</td><td>{{ data.description }}</td></tr>
-{#        <tr><td>Description Embedding</td><td>Length: {{ data.description_embedding | length }}</td></tr>#}
-        <tr><td>Name Embedding</td><td>{{ data.name_embedding }}</td></tr>
-        <tr><td>Graph Embedding</td><td>{{ data.graph_embedding }}</td></tr>
-        <tr><td>Community IDs</td><td>{{ data.community_ids }}</td></tr>
+        <tr><td>ID</td><td>{{ data.id }}</td></tr>
+        <tr><td>Short ID</td><td>{{ data.short_id }}</td></tr>
+{% if data.text_unit_ids is defined %}
         <tr><td>Text Unit IDs</td><td>{{ data.text_unit_ids }}</td></tr>
-        <tr><td>Document IDs</td><td>{{ data.document_ids }}</td></tr>
-        <tr><td>Rank</td><td>{{ data.rank }}</td></tr>
-        <tr><td>Attributes</td><td>{{ data.attributes }}</td></tr>
+{% endif %}
+{% if data.frequency is defined %}
+        <tr><td>Frequency</td><td>{{ data.frequency }}</td></tr>
+{% endif %}
+{% if data.degree is defined %}
+        <tr><td>Degree</td><td>{{ data.degree }}</td></tr>
+{% endif %}
+{% if data.x is defined and data.y is defined %}
+        <tr><td>Coordinates</td><td>X: {{ data.x }}, Y: {{ data.y }}</td></tr>
+{% endif %}
+{% if data.human_readable_id is defined %}
+        <tr><td>Human Readable ID</td><td>{{ data.human_readable_id }}</td></tr>
+{% endif %}
     </table>
 </body>
 </html>

@@ -25,14 +25,27 @@
     <h1 style="text-align: center;">Text Unit Information</h1>
     <table>
         <tr><th>Attribute</th><th>Value</th></tr>
+        <tr><td>ID</td><td>{{ data.id }}</td></tr>
+        <tr><td>Short ID</td><td>{{ data.short_id }}</td></tr>
+{% if data.human_readable_id is defined %}
+        <tr><td>Human Readable ID</td><td>{{ data.human_readable_id }}</td></tr>
+{% endif %}
         <tr><td>Text</td><td>{{ data.text }}</td></tr>
-        <tr><td>Text Embedding</td><td>{{ data.text_embedding }}</td></tr>
-        <tr><td>Entity IDs</td><td>{{ data.entity_ids }}</td></tr>
-        <tr><td>Relationship IDs</td><td>{{ data.relationship_ids }}</td></tr>
-        <tr><td>Covariate IDs</td><td>{{ data.covariate_ids }}</td></tr>
+{% if data.n_tokens is defined %}
         <tr><td>Number of Tokens</td><td>{{ data.n_tokens }}</td></tr>
+{% endif %}
+{% if data.document_ids is defined %}
         <tr><td>Document IDs</td><td>{{ data.document_ids }}</td></tr>
-        <tr><td>Attributes</td><td>{{ data.attributes }}</td></tr>
+{% endif %}
+{% if data.entity_ids is defined %}
+        <tr><td>Entity IDs</td><td>{{ data.entity_ids }}</td></tr>
+{% endif %}
+{% if data.relationship_ids is defined %}
+        <tr><td>Relationship IDs</td><td>{{ data.relationship_ids }}</td></tr>
+{% endif %}
+{% if data.covariate_ids is defined %}
+        <tr><td>Covariate IDs</td><td>{{ data.covariate_ids }}</td></tr>
+{% endif %}
     </table>
 </body>
 </html>
