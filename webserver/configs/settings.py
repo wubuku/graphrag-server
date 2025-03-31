@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     root: str = os.environ.get("GRAPHRAG_ROOT_DIR", ".")
     data: str = os.environ.get("GRAPHRAG_DATA_DIR", "")
     
+    # Base URL for references, used in response links
+    # Can be set to external domain when using reverse proxy
+    reference_base_url: str = os.environ.get("GRAPHRAG_REFERENCE_BASE_URL", "")
+    
     community_level: int = 2
     dynamic_community_selection: bool = False
     response_type: str = "Multiple Paragraphs"
@@ -37,6 +41,16 @@ class Settings(BaseSettings):
     @property
     def website_address(self) -> str:
         return f"http://127.0.0.1:{self.server_port}"
+        
+    @property
+    def reference_url_base(self) -> str:
+        """Get the base URL for references
+        
+        If reference_base_url is set, use it; otherwise use website_address
+        """
+        if self.reference_base_url:
+            return self.reference_base_url.rstrip('/')
+        return self.website_address
 
     class Config:
         env_prefix = "GRAPHRAG_"

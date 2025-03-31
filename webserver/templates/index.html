@@ -91,6 +91,26 @@
         .response-content a:hover {
             text-decoration: underline;
         }
+        .references-section {
+            margin-top: 15px;
+            padding: 10px;
+            background-color: #f6f8fa;
+            border-top: 1px solid #e1e4e8;
+            border-radius: 0 0 6px 6px;
+            font-size: 0.9em;
+        }
+        .references-list {
+            margin: 0;
+            padding-left: 20px;
+        }
+        .references-list li {
+            margin-bottom: 5px;
+        }
+        .references-title {
+            font-weight: bold;
+            margin-bottom: 8px;
+            color: #586069;
+        }
     </style>
 </head>
 <body>
@@ -159,11 +179,44 @@
                     const data = await response.json();
                     
                     // 获取回答内容
-                    const content = data.choices[0].message.content;
+                    let content = data.choices[0].message.content;
+                    
+                    // 分离正文和引用
+                    const contentParts = processContentWithReferences(content);
                     
                     // 创建回答容器
                     const responseDiv = document.createElement('div');
-                    responseDiv.innerHTML = `<strong>GraphRAG:</strong><div class="response-content">${marked.parse(content)}</div>`;
+                    responseDiv.innerHTML = `<strong>GraphRAG:</strong>`;
+                    
+                    // 添加主要内容
+                    const mainContent = document.createElement('div');
+                    mainContent.className = 'response-content';
+                    mainContent.innerHTML = marked.parse(contentParts.main);
+                    responseDiv.appendChild(mainContent);
+                    
+                    // 如果有引用，添加引用部分
+                    if (contentParts.references.length > 0) {
+                        const referencesSection = document.createElement('div');
+                        referencesSection.className = 'references-section';
+                        
+                        const referencesTitle = document.createElement('div');
+                        referencesTitle.className = 'references-title';
+                        referencesTitle.textContent = 'References:';
+                        referencesSection.appendChild(referencesTitle);
+                        
+                        const referencesList = document.createElement('ul');
+                        referencesList.className = 'references-list';
+                        
+                        contentParts.references.forEach(ref => {
+                            const refItem = document.createElement('li');
+                            refItem.innerHTML = marked.parse(ref);
+                            referencesList.appendChild(refItem);
+                        });
+                        
+                        referencesSection.appendChild(referencesList);
+                        responseDiv.appendChild(referencesSection);
+                    }
+                    
                     chatBox.appendChild(responseDiv);
                 } catch (error) {
                     console.error('Error:', error);
@@ -176,6 +229,50 @@
                     // 滚动到最新消息
                     chatBox.scrollTop = chatBox.scrollHeight;
                 }
+            }
+            
+            // 处理内容，分离正文和引用
+            function processContentWithReferences(content) {
+                // 分割内容为行
+                const contentLines = content.split('\n');
+                const references = [];
+                
+                // 从末尾开始向前查找引用行
+                let mainContentEndIndex = contentLines.length - 1;
+                
+                // 跳过末尾的空行
+                while (mainContentEndIndex >= 0 && contentLines[mainContentEndIndex].trim() === '') {
+                    mainContentEndIndex--;
+                }
+                
+                // 从末尾向前收集引用行
+                // 引用行格式如：[^Data:Sources(30)]: [Sources: 30](http://example.com/v1/references/local/sources/30)
+                // 这些URL是由服务器生成的，通过配置或环境变量GRAPHRAG_REFERENCE_BASE_URL可以控制基础URL
+                for (let i = mainContentEndIndex; i >= 0; i--) {
+                    const line = contentLines[i].trim();
+                    // 检查是否是引用行（以[^Data:开头）
+                    if (line.match(/^\[\^Data:/)) {
+                        // 将引用添加到引用列表的前面，保持原有顺序
+                        references.unshift(line);
+                        mainContentEndIndex = i - 1;
+                    } else if (line !== '') {
+                        // 遇到非空、非引用行，表示引用部分结束
+                        break;
+                    }
+                }
+                
+                // 提取主要内容（不包括引用部分）
+                const mainLines = contentLines.slice(0, mainContentEndIndex + 1);
+                
+                // 确保主内容末尾没有多余的空行
+                while (mainLines.length > 0 && mainLines[mainLines.length - 1].trim() === '') {
+                    mainLines.pop();
+                }
+                
+                return {
+                    main: mainLines.join('\n'),
+                    references: references
+                };
             }
 
             // 点击发送按钮或按回车键发送问题
