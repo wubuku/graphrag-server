@@ -13,8 +13,24 @@ from graphrag.query.indexer_adapters import read_indexer_relationships, read_ind
     read_indexer_reports, read_indexer_text_units
 from webserver.utils import consts
 
-# Debug mode switch - set to True to enable verbose logging
+# Debug mode switch - set to False by default for production
+# When set to True, enables detailed logging for data access operations
+# Can be temporarily enabled for a specific request using enable_debug_for_request()
 DEBUG_MODE = False
+
+# Function to temporarily enable debug mode for a single request
+def enable_debug_for_request():
+    """Temporarily enable debug mode and return the original state"""
+    global DEBUG_MODE
+    original_debug_mode = DEBUG_MODE
+    DEBUG_MODE = True
+    return original_debug_mode
+
+# Function to restore debug mode to its original value
+def restore_debug_mode(original_mode):
+    """Restore debug mode to its original state"""
+    global DEBUG_MODE
+    DEBUG_MODE = original_mode
 
 logger = logging.getLogger(__name__)
 
@@ -554,59 +570,143 @@ async def get_report(input_dir: str, row_id: Optional[int] = None) -> CommunityR
         
         report_df = pd.read_parquet(report_path)
         
-        # Debug: Log DataFrame columns
+        # Debug: Log DataFrame columns and detailed info about IDs
         if DEBUG_MODE:
             logger.info(f"Report DataFrame columns: {report_df.columns.tolist()}")
+            logger.info(f"Report DataFrame has {len(report_df)} rows")
             logger.info(f"Sample report data (first row): {report_df.iloc[0].to_dict() if len(report_df) > 0 else 'Empty DataFrame'}")
+            logger.info(f"ID column type: {report_df['id'].dtype if 'id' in report_df.columns else 'no id column'}")
+            if 'id' in report_df.columns:
+                sample_ids = report_df['id'].head(10).tolist()
+                logger.info(f"Sample IDs in dataframe: {sample_ids}")
+            logger.info(f"Looking for report with ID type: {type(row_id)}, value: {row_id}")
         
         # Check if specified ID exists
         if 'id' in report_df.columns:
-            # Try exact match first
-            matching_rows = report_df[report_df['id'].astype(str) == str(row_id)]
+            # Try multiple matching strategies
+            matching_rows = pd.DataFrame()
             
-            # If no exact match, try matching where short_id might be
-            if matching_rows.empty and 'short_id' in report_df.columns:
-                matching_rows = report_df[report_df['short_id'].astype(str) == str(row_id)]
+            # Method 1: Direct string matching (most reliable across types)
+            string_match = report_df[report_df['id'].astype(str) == str(row_id)]
+            if not string_match.empty:
+                matching_rows = string_match
                 if DEBUG_MODE:
-                    logger.info(f"Tried matching by short_id, found: {len(matching_rows)} rows")
+                    logger.info(f"Found {len(matching_rows)} matches using string comparison for ID={row_id}")
+            
+            # Method 2: Try integer matching if possible
+            if matching_rows.empty:
+                try:
+                    int_id = int(row_id)
+                    if report_df['id'].dtype == 'int64' or report_df['id'].dtype == 'int32':
+                        int_match = report_df[report_df['id'] == int_id]
+                        if not int_match.empty:
+                            matching_rows = int_match
+                            if DEBUG_MODE:
+                                logger.info(f"Found {len(matching_rows)} matches using integer comparison for ID={row_id}")
+                except (ValueError, TypeError):
+                    pass
+            
+            # Method 3: Try using short_id if it exists
+            if matching_rows.empty and 'short_id' in report_df.columns:
+                short_id_match = report_df[report_df['short_id'].astype(str) == str(row_id)]
+                if not short_id_match.empty:
+                    matching_rows = short_id_match
+                    if DEBUG_MODE:
+                        logger.info(f"Found {len(matching_rows)} matches using short_id={row_id}")
+            
+            # Method 4: Try human_readable_id if it exists
+            if matching_rows.empty and 'human_readable_id' in report_df.columns:
+                human_id_match = report_df[report_df['human_readable_id'].astype(str) == str(row_id)]
+                if not human_id_match.empty:
+                    matching_rows = human_id_match
+                    if DEBUG_MODE:
+                        logger.info(f"Found {len(matching_rows)} matches using human_readable_id={row_id}")
+            
+            # Last resort: Look for any integer index matching the row_id (position-based fallback)
+            if matching_rows.empty and isinstance(row_id, int) and row_id < len(report_df):
+                # Try to use row_id as a positional index
+                if DEBUG_MODE:
+                    logger.info(f"Attempting to use row_id={row_id} as a positional index")
+                try:
+                    matching_rows = report_df.iloc[[row_id]]
+                    if DEBUG_MODE:
+                        logger.info(f"Found match using row_id={row_id} as positional index")
+                except IndexError:
+                    pass
             
             if not matching_rows.empty:
                 # Found matching record, construct CommunityReport directly from DataFrame
                 row = matching_rows.iloc[0]
                 if DEBUG_MODE:
                     logger.info(f"Found matching report with id={row_id}")
+                    logger.info(f"Matched row data: {row.to_dict()}")
                 
                 # Create CommunityReport attribute dictionary with required columns
-                report_attrs = {
-                    'id': str(row['id']),
-                    'short_id': str(row_id),
-                    'community': str(row['community']) if 'community' in row else "",
-                    'summary': row['summary'] if 'summary' in row and not pd.isna(row['summary']) else ""
+                report_dict = {
+                    "id": str(row['id']),
+                    "short_id": str(row_id),
+                    "community_id": str(row['community']) if 'community' in row else "",
+                    "summary": "",  # Default empty summary
+                    "title": row.get("title", f"Report {row['id']}") if not pd.isna(row.get("title", "")) else f"Report {row['id']}",  # Default title
+                    "attributes": {}  # Required in GraphRAG 2.1.0
                 }
                 
-                # Add optional fields - with array check fix
-                for field in ['title', 'full_content', 'parent', 'children', 'rank', 'rating_explanation', 
-                              'findings', 'period', 'size', 'graph_data', 'level']:
+                # Safely add summary field, handling potential arrays or None
+                if "summary" in row:
+                    summary_value = row["summary"]
+                    if isinstance(summary_value, (list, np.ndarray)) or (hasattr(summary_value, 'dtype') and pd.api.types.is_array_like(summary_value)):
+                        # For array types, add if not all NaN
+                        if not pd.isna(summary_value).all():
+                            report_dict["summary"] = str(summary_value)
+                    elif not pd.isna(summary_value):
+                        report_dict["summary"] = str(summary_value)
+                
+                # Add optional fields - only those supported by CommunityReport in GraphRAG 2.1.0
+                for field in ['full_content', 'rank', 'size', 'period']:
                     if field in row:
                         # Safely check for NaN, handling array cases
                         field_value = row[field]
                         if isinstance(field_value, (list, np.ndarray)) or (hasattr(field_value, 'dtype') and pd.api.types.is_array_like(field_value)):
                             # For array types, add if not all NaN
                             if not pd.isna(field_value).all():
-                                report_attrs[field] = field_value
+                                report_dict[field] = field_value
                         elif not pd.isna(field_value):
                             # For single values, add if not NaN
-                            report_attrs[field] = field_value
+                            report_dict[field] = field_value
                 
-                return CommunityReport(**report_attrs)
+                # Debug information to help diagnose issues
+                if DEBUG_MODE:
+                    logger.info(f"Creating CommunityReport with attributes: {list(report_dict.keys())}")
+                    
+                    # Temporarily try to introspect the CommunityReport class to see accepted parameters
+                    try:
+                        import inspect
+                        from graphrag.data_model.community_report import CommunityReport as CR
+                        init_params = list(inspect.signature(CR.__init__).parameters.keys())
+                        # Remove 'self' from the list
+                        if 'self' in init_params:
+                            init_params.remove('self')
+                        logger.info(f"CommunityReport.__init__ accepts these parameters: {init_params}")
+                    except Exception as inspect_err:
+                        logger.error(f"Failed to inspect CommunityReport: {inspect_err}")
+                
+                return CommunityReport(**report_dict)
             else:
                 logger.warning(f"Could not find report with id={row_id} using direct DataFrame lookup")
+                if DEBUG_MODE:
+                    # Print some sample IDs to help diagnose the issue
+                    if 'id' in report_df.columns:
+                        sample_ids = report_df['id'].astype(str).head(5).tolist()
+                        logger.info(f"Sample report IDs available: {sample_ids}")
+                    # Print all column values for the first row as a reference
+                    if len(report_df) > 0:
+                        logger.info(f"Example row data structure: {report_df.iloc[0].to_dict()}")
         
         # If direct method above doesn't work, try safely using adapter
         try:
             if DEBUG_MODE:
                 logger.info("Attempting to use adapter function")
-            reports = read_community_reports(report_df)
+            reports = read_indexer_reports(report_df)
             
             for report in reports:
                 if int(report.short_id) == row_id:
@@ -638,8 +738,10 @@ async def get_report(input_dir: str, row_id: Optional[int] = None) -> CommunityR
                             return CommunityReport(
                                 id=str(row['id']) if 'id' in row else str(row_id),
                                 short_id=str(row_id),
-                                community=str(row['community']) if 'community' in row else "",
-                                summary=row['summary'] if 'summary' in row and not pd.isna(row['summary']) else f"Report {row_id}"
+                                community_id=str(row['community']) if 'community' in row else "",
+                                summary=row['summary'] if 'summary' in row and not pd.isna(row['summary']) else f"Report {row_id}",
+                                title=f"Report {row_id}",
+                                attributes={}
                             )
                 
                 # If still not found, create default object
@@ -647,8 +749,10 @@ async def get_report(input_dir: str, row_id: Optional[int] = None) -> CommunityR
                 return CommunityReport(
                     id="not_found",
                     short_id=str(row_id),
-                    community="unknown",
-                    summary=f"Report {row_id} (Data available but not matched)"
+                    community_id="unknown",
+                    summary=f"Report {row_id} (Data available but not matched)",
+                    title=f"Report {row_id}",
+                    attributes={}
                 )
         
         # If execution reaches here, it means the report truly doesn't exist
@@ -659,8 +763,10 @@ async def get_report(input_dir: str, row_id: Optional[int] = None) -> CommunityR
         return CommunityReport(
             id="error",
             short_id="0",
-            community="error",
-            summary=f"Error: {str(e)}\nCould not load report data. Check server logs for details."
+            community_id="error",
+            summary=f"Error: {str(e)}\nCould not load report data. Check server logs for details.",
+            title=f"Report {row_id}",
+            attributes={}
         )
 
 
@@ -796,13 +902,21 @@ def read_community_reports(reports_df: pd.DataFrame) -> List[CommunityReport]:
             logger.warning("Reports DataFrame is empty")
             return []
             
-        for _, row in reports_df.iterrows():
+        if DEBUG_MODE:
+            logger.info(f"Reading community reports with columns: {reports_df.columns.tolist()}")
+            
+        for idx, row in reports_df.iterrows():
             try:
+                if DEBUG_MODE:
+                    logger.info(f"Processing report row {idx} with ID: {row.get('id', 'N/A')}")
+                    
                 report_dict = {
                     "id": str(row["id"]),
                     "short_id": str(row["id"]),
-                    "community": str(row["community"]) if "community" in row else "",
-                    "summary": ""  # Default empty summary
+                    "community_id": str(row["community"]) if "community" in row else "",
+                    "summary": "",  # Default empty summary
+                    "title": row.get("title", f"Report {row['id']}") if not pd.isna(row.get("title", "")) else f"Report {row['id']}",  # Default title
+                    "attributes": {}  # Required in GraphRAG 2.1.0
                 }
                 
                 # Safely add summary field, handling potential arrays or None
@@ -815,10 +929,8 @@ def read_community_reports(reports_df: pd.DataFrame) -> List[CommunityReport]:
                     elif not pd.isna(summary_value):
                         report_dict["summary"] = str(summary_value)
                 
-                # Add optional fields
-                for field in ['title', 'full_content', 'parent', 'children', 'rank', 
-                             'rating_explanation', 'findings', 'period', 'size', 
-                             'graph_data', 'level']:
+                # Add optional fields - only those supported by CommunityReport in GraphRAG 2.1.0
+                for field in ['full_content', 'rank', 'size', 'period']:
                     if field in row:
                         # Safely check for NaN, handling array cases
                         field_value = row[field]
@@ -830,12 +942,16 @@ def read_community_reports(reports_df: pd.DataFrame) -> List[CommunityReport]:
                             # For single values, add if not NaN
                             report_dict[field] = field_value
                 
+                if DEBUG_MODE:
+                    logger.info(f"Creating report with attributes: {list(report_dict.keys())}")
                 report = CommunityReport(**report_dict)
                 reports.append(report)
             except Exception as e:
                 logger.error(f"Error processing report row: {str(e)}", exc_info=True)
                 continue
                 
+        if DEBUG_MODE:
+            logger.info(f"Successfully created {len(reports)} community reports")
         return reports
     except Exception as e:
         logger.error(f"Error reading community reports: {str(e)}", exc_info=True)

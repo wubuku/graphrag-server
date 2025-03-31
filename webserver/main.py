@@ -298,16 +298,62 @@ async def get_reference(index_id: str, datatype: str, id: int):
     if datatype not in ["entities", "sources", "reports", "relationships"]:
         raise HTTPException(status_code=404, detail=f"Datatype {datatype} not supported")
 
+    # Debug mode can be enabled manually if needed for troubleshooting
+    # But now that we've fixed the issues, we don't need to automatically enable it for reports
+    original_debug_mode = None
+    # Uncomment the following block if you need to troubleshoot issues again
+    # if datatype == "reports":
+    #     try:
+    #         from webserver.search.indexdata import enable_debug_for_request, restore_debug_mode
+    #         original_debug_mode = enable_debug_for_request()
+    #         logger.info("Temporarily enabled debug mode for report request")
+    #     except Exception as debug_error:
+    #         logger.warning(f"Failed to enable debug mode: {debug_error}")
+
     try:
+        # Basic logging
+        logger.info(f"Retrieving {datatype} with ID {id} from {settings.data}")
+        
         data = await search.get_index_data(settings.data, datatype, id)
+        
+        # Log successful data retrieval (no need for detailed logging now that issues are resolved)
+        logger.info(f"Successfully retrieved {datatype} data with ID {id}")
+        
         html_file_path = os.path.join("webserver", "templates", f"{datatype}_template.html")
         with open(html_file_path, 'r') as file:
             html_content = file.read()
         template = Template(html_content)
         html_content = template.render(data=data)
+        
+        # Restore original debug mode if it was changed
+        if original_debug_mode is not None:
+            try:
+                from webserver.search.indexdata import restore_debug_mode
+                restore_debug_mode(original_debug_mode)
+                logger.info("Restored original debug mode")
+            except Exception as restore_error:
+                logger.warning(f"Failed to restore debug mode: {restore_error}")
+                
         return HTMLResponse(content=html_content)
     except Exception as e:
         logger.error(f"Error getting reference data: {e}", exc_info=True)
+        
+        # Enhanced error information for debugging CommunityReport issues
+        if datatype == "reports" and "CommunityReport.__init__()" in str(e):
+            # Print detailed information about the error
+            error_msg = f"GraphRAG data model error: {str(e)}\n"
+            error_msg += "This is likely due to a change in the CommunityReport class in GraphRAG 2.1.0."
+            logger.error(error_msg)
+        
+        # Restore original debug mode if it was changed and we had an error
+        if original_debug_mode is not None:
+            try:
+                from webserver.search.indexdata import restore_debug_mode
+                restore_debug_mode(original_debug_mode)
+                logger.info("Restored original debug mode after error")
+            except Exception as restore_error:
+                logger.warning(f"Failed to restore debug mode: {restore_error}")
+                
         raise HTTPException(status_code=500, detail=f"Error getting reference data: {str(e)}")
 
 
