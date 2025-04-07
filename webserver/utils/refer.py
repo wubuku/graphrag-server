@@ -4,8 +4,9 @@ from typing import Set, Dict
 
 from webserver.configs import settings
 
-pattern = re.compile(r'\[\^Data:(\w+?)\((\d+(?:,\d+)*)\)\]')
-
+# pattern = re.compile(r'\[\^Data:(\w+?)\((\d+(?:,\d+)*)\)\]')
+# Updated pattern to support both formats: [^Data:Sources(446)] and [Data: Sources (446)]
+pattern = re.compile(r'\[\^?Data:[ ]?(\w+?)[ ]?\((\d+(?:,\d+)*)\)\]')
 
 def get_reference(text: str) -> dict:
     data_dict = defaultdict(set)

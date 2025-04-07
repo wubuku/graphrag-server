@@ -143,9 +143,8 @@ async def handle_sync_response(request, search, conversation_history):
         response = response["nodes"][0]["answer"]
     else:
         response = result.response
-
     reference = utils.get_reference(response)
-    if reference:
+    if reference and settings.show_references:
         response += f"\n{utils.generate_ref_links(reference, request.model)}"
     from openai.types.chat.chat_completion import Choice
     completion = ChatCompletion(
@@ -204,7 +203,7 @@ async def handle_stream_response(request, search, conversation_history):
 
         content = ""
         reference = utils.get_reference(full_response)
-        if reference:
+        if reference and settings.show_references:
             content = f"\n{utils.generate_ref_links(reference, request.model)}"
         finish_reason = 'stop'
         chunk = ChatCompletionChunk(

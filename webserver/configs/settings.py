@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     community_level: int = 2
     dynamic_community_selection: bool = False
     response_type: str = "Multiple Paragraphs"
+    # Controls whether to show references in responses
+    show_references: bool = True
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -34,9 +36,17 @@ class Settings(BaseSettings):
         else:
             self.data = os.path.abspath(os.path.expanduser(self.data))
         
+        # Explicitly handle boolean environment variables
+        show_refs_env = os.environ.get("GRAPHRAG_SHOW_REFERENCES", "").lower()
+        if show_refs_env in ("false", "0", "no", "n", "off"):
+            self.show_references = False
+        elif show_refs_env in ("true", "1", "yes", "y", "on"):
+            self.show_references = True
+            
         # Print current path configuration for debugging
         print(f"GraphRAG Root Dir: {self.root}")
         print(f"GraphRAG Data Dir: {self.data}")
+        print(f"Show References: {self.show_references}")
 
     @property
     def website_address(self) -> str:

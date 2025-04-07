@@ -25,7 +25,7 @@ RUN pip install --no-cache-dir tomli spacy==3.8.3 \
 
 # Process GraphRAG dependencies in a single layer
 COPY parse_deps.py /tmp/parse_deps.py
-RUN git clone --depth 1 https://github.com/microsoft/graphrag.git /tmp/graphrag \
+RUN git clone --depth 1 --branch v2.1.0 https://github.com/microsoft/graphrag.git /tmp/graphrag \
     && python /tmp/parse_deps.py \
     && pip install --no-cache-dir -r /tmp/graphrag-deps.txt \
     && pip install --no-cache-dir --no-deps graphrag==2.1.0 \
