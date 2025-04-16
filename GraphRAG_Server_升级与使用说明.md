@@ -54,6 +54,8 @@ pip install graphrag==2.1.0
 在执行 `pip install -r requirements.txt` 之后，直接可以启动服务器：
 
 ```shell
+# conda activate graphrag
+# source .env
 python -m webserver.main
 ```
 
