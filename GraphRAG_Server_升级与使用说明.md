@@ -1,5 +1,7 @@
 # GraphRAG Server 升级与使用说明
 
+[![DeepWiki](https://img.shields.io/badge/DeepWiki-Docs-blue?logo=read-the-docs)](https://deepwiki.com/wubuku/graphrag-server)
+
 ## 升级
 
 已经将GraphRAG升级到2.1.0版本，其他依赖包也更新到更新的稳定版本。
