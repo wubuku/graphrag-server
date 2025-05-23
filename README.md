@@ -14,6 +14,34 @@
 
 # 如何安装How to install
 你可以使用Docker安装，也可以拉取本项目使用。You can install by docker or pull this repo.
+
+## ⚠️ 环境问题解决方案 Environment Issues Solution
+
+如果你在 macOS 升级后遇到 Python 环境问题，现在只需要一个脚本解决所有问题！
+
+### 🚀 统一工具脚本 (推荐)
+
+```bash
+# 查看所有可用选项
+./graphrag_tool.sh help
+
+# 一键完整安装（推荐首次使用）
+./graphrag_tool.sh install
+
+# 或者使用交互式菜单
+./graphrag_tool.sh
+```
+
+### 📋 常用命令
+
+```bash
+./graphrag_tool.sh install   # 🏁 一键安装所有依赖
+./graphrag_tool.sh fix       # 🔧 修复环境问题  
+./graphrag_tool.sh verify    # 🔍 验证环境状态
+./graphrag_tool.sh start     # 🌐 启动服务器
+./graphrag_tool.sh index     # 📊 运行索引
+```
+
 ## 拉取源码 Pull the source code
 - 克隆本项目 Clone the repo
 ```
