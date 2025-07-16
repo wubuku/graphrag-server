@@ -23,7 +23,9 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: |
-            # ${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}
+            # Push to DockerHub
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}
+            # Push to GitHub Container Registry
             ghcr.io/${{ github.repository }}
           tags: |
             type=semver,pattern={{version}}
