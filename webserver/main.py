@@ -278,6 +278,30 @@ async def get_advice_question(request: gtypes.ChatQuestionGen):
     return resp
 
 
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for load balancers and monitoring systems"""
+    try:
+        # Basic health check - verify search engines are initialized
+        if not all([local_search, global_search, drift_search, basic_search]):
+            return JSONResponse(
+                status_code=503,
+                content={"status": "unhealthy", "message": "Search engines not initialized"}
+            )
+        
+        # Return healthy status
+        return JSONResponse(
+            status_code=200,
+            content={"status": "healthy", "message": "Service is running"}
+        )
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return JSONResponse(
+            status_code=503,
+            content={"status": "unhealthy", "message": str(e)}
+        )
+
+
 @app.get("/v1/models", response_model=gtypes.ModelList)
 async def list_models():
     models: list[gtypes.Model] = [
